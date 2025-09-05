@@ -1,0 +1,223 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Excel Analysis Dashboard</title>
+    <link rel="stylesheet" href="{% static 'css/styles.css' %}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <header class="dashboard-header">
+            <h1><i class="fas fa-file-excel"></i> Excel Analysis Dashboard</h1>
+            <p>Upload your sales data and get instant insights with beautiful visualizations</p>
+        </header>
+
+        <div class="dashboard-content">
+            <div class="upload-section">
+                <div class="upload-card">
+                    <h2><i class="fas fa-cloud-upload-alt"></i> Upload Excel File</h2>
+                    
+                    {% if error %}
+                    <div class="error-msg">
+                        <i class="fas fa-exclamation-circle"></i>
+                        <strong>Error:</strong> {{ error }}
+                    </div>
+                    {% endif %}
+
+                    <form method="post" enctype="multipart/form-data" id="uploadForm">
+                        {% csrf_token %}
+                        <div class="file-input-container">
+                            <label for="id_excel_file" class="file-drop-area" id="fileDropArea">
+                                <i class="fas fa-file-excel"></i>
+                                <p>Drag & drop your Excel file here</p>
+                                <span class="file-browse">or click to browse</span>
+                                <span class="file-name" id="fileName">No file chosen</span>
+                            </label>
+                            <input type="file" name="excel_file" id="id_excel_file" accept=".xlsx,.xls,.csv" style="display: none;">
+                        </div>
+                        <button type="submit" class="upload-btn" id="uploadBtn">
+                            <i class="fas fa-spinner fa-spin" id="uploadSpinner" style="display: none;"></i>
+                            <span id="uploadText">Analyze Data</span>
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="results-section" id="resultsSection" style="display: {% if uploaded %}block{% else %}none{% endif %};">
+                <div class="results-header">
+                    <h2><i class="fas fa-chart-line"></i> Analysis Results</h2>
+                    <div class="download-buttons">
+                        <a href="{% url 'download_analysis' 'csv' %}" class="download-btn">
+                            <i class="fas fa-file-csv"></i> Download CSV
+                        </a>
+                        <a href="{% url 'download_analysis' 'xlsx' %}" class="download-btn">
+                            <i class="fas fa-file-excel"></i> Download Excel
+                        </a>
+                    </div>
+                </div>
+
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <h3>Total Products</h3>
+                        <div class="stat-value">{{ total_sales|length }}</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Total Sales</h3>
+                        <div class="stat-value">₹{{ total_sales_sum }}</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Total Records</h3>
+                        <div class="stat-value">{{ total_records }}</div>
+                    </div>
+                </div>
+
+                <div class="analysis-card">
+                    <h3><i class="fas fa-shopping-bag"></i> Total Sales per Product</h3>
+                    <div class="chart-container">
+                        <div class="bar-chart">
+                            {% for product, total in total_sales.items %}
+                            <div class="bar-item">
+                                <div class="bar-label">{{ product }}</div>
+                                <div class="bar-track">
+                                    <div class="bar-fill" data-value="{{ total }}"></div>
+                                </div>
+                                <div class="bar-value">₹{{ total }}</div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="analysis-card">
+                    <h3><i class="fas fa-calendar-alt"></i> Average Sales per Month</h3>
+                    <div class="monthly-grid">
+                        {% for month, avg in avg_sales_per_month.items %}
+                        <div class="month-item">
+                            <div class="month-name">{{ month }}</div>
+                            <div class="month-value">₹{{ avg|floatformat:2 }}</div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <div class="analysis-card">
+                    <h3><i class="fas fa-chart-pie"></i> Sales Count per Product</h3>
+                    <div class="count-grid">
+                        {% for product, count in sales_count.items %}
+                        <div class="count-item">
+                            <div class="count-product">{{ product }}</div>
+                            <div class="count-badge">{{ count }}</div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const fileInput = document.getElementById('id_excel_file');
+            const fileDropArea = document.getElementById('fileDropArea');
+            const fileName = document.getElementById('fileName');
+            const uploadForm = document.getElementById('uploadForm');
+            const uploadBtn = document.getElementById('uploadBtn');
+            const uploadText = document.getElementById('uploadText');
+            const uploadSpinner = document.getElementById('uploadSpinner');
+            const resultsSection = document.getElementById('resultsSection');
+
+            // Function to animate the bars
+            function animateBars() {
+                const bars = document.querySelectorAll('.bar-fill');
+                if (bars.length === 0) return;
+                
+                // Get the maximum value for scaling
+                let maxValue = 0;
+                bars.forEach(bar => {
+                    const value = parseFloat(bar.getAttribute('data-value'));
+                    if (value > maxValue) maxValue = value;
+                });
+                
+                // Animate each bar
+                bars.forEach(bar => {
+                    const value = parseFloat(bar.getAttribute('data-value'));
+                    const percentage = (value / maxValue) * 100;
+                    
+                    // Set the width with a delay to create animation effect
+                    setTimeout(() => {
+                        bar.style.width = percentage + '%';
+                    }, 300);
+                });
+            }
+
+            // Animate bars when results are shown
+            if (resultsSection.style.display !== 'none') {
+                setTimeout(animateBars, 500);
+            }
+
+            // ✅ filename update function
+            function updateFileName(files) {
+                if (files.length > 0) {
+                    fileName.textContent = files[0].name;
+                    fileName.classList.add('has-file');
+                    uploadBtn.disabled = false;
+                } else {
+                    fileName.textContent = 'No file chosen';
+                    fileName.classList.remove('has-file');
+                    uploadBtn.disabled = true;
+                }
+            }
+
+            // when selecting file normally
+            fileInput.addEventListener('change', function() {
+                updateFileName(this.files);
+            });
+
+            // drag & drop
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                fileDropArea.addEventListener(eventName, function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }, false);
+            });
+
+            fileDropArea.addEventListener('dragenter', function() {
+                this.classList.add('highlight');
+            });
+
+            fileDropArea.addEventListener('dragleave', function() {
+                this.classList.remove('highlight');
+            });
+
+            fileDropArea.addEventListener('drop', function(e) {
+                this.classList.remove('highlight');
+                const dt = e.dataTransfer;
+                const files = dt.files;
+                fileInput.files = files;
+                updateFileName(files);
+            });
+
+            // submit form
+            uploadForm.addEventListener('submit', function(e) {
+                if (fileInput.files.length === 0) {
+                    e.preventDefault();
+                    alert('Please select a file first!');
+                    return;
+                }
+                uploadText.textContent = 'Analyzing...';
+                uploadSpinner.style.display = 'inline-block';
+                uploadBtn.disabled = true;
+                
+                // After form submission, the page will reload with results
+                // The animation will be triggered again when the DOM is loaded
+            });
+
+            // init state
+            updateFileName([]);
+        });
+    </script>
+</body>
+</html>
