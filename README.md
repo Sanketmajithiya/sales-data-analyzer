@@ -1,6 +1,9 @@
 
 ---
 
+![Dashboard](assets/dashboard.png)
+
+
 ````markdown
 # Sales Analyzer
 
